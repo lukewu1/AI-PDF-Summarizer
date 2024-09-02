@@ -1,4 +1,3 @@
-
 import React, { useRef, useState } from "react";
 import Chat from './Chat.js';
 import PDFViewer from './PDFViewer.js';
@@ -10,14 +9,27 @@ export default function Main(props) {
     const [pageText, setPageText] = useState("");
     const textContainerRef = useRef(null);
     const [pageNumber, setPageNumber] = useState(1);
+
+    // console.log("Main Component - apiKeyNotion:", props.apiKeyNotion);
+    // console.log("Main Component - notionPageId:", props.notionPageId);
+    // console.log("Main Component - apiKey:", props.apiKey);
     
     return (
         <div>
             <div className="container">
-                <PDFViewer file={props.file} setPageText={setPageText} pageNumber = {pageNumber} setPageNumber={setPageNumber} />
+                <PDFViewer 
+                    file={props.file} 
+                    setPageText={setPageText} 
+                    pageNumber = {pageNumber} 
+                    setPageNumber={setPageNumber} 
+                />
 
                 <div className="text-container" ref={textContainerRef}>
-                    <Chat file={props.file} text={pageText} pageNumber = {pageNumber} />
+                    <Chat 
+                        file={props.file} 
+                        text={pageText} 
+                        pageNumber = {pageNumber} 
+                    />
                 </div>
             </div>
         </div>

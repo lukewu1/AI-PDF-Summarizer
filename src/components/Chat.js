@@ -3,21 +3,29 @@ import Message from './Message.js';
 import '../styles/Chat.css';
 import GPT from '../utils/GPT.js';
 import TextareaAutosize from 'react-textarea-autosize';
+import Cookies from 'js-cookie';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane, faTrash, faStop, faExclamationCircle, faFileCircleXmark, faFileCircleMinus, faFileCirclePlus } from '@fortawesome/free-solid-svg-icons';
+import { makeConsoleLogger } from "@notionhq/client/build/src/logging.js";
 
 
 export default function Chat(props){
 
-    const [model, setModel] = useState(""); // the model to use for generating completions
-    const [pageText, setPageText] = useState(""); // the text of the current pdf page
-    const [chatHistory, setChatHistory] = useState([]); // the chat history to be shown. This is an array of Message components.
-    const [isGenerating, setIsGenerating] = useState(true); // whether the model is currently generating completions
-    const [userMessage, setUserMessage] = useState(""); // the message the user is currently typing
-    const [openaiChatHistory,setOpenaiChatHistory] = useState([]); // the chat history to be sent to OpenAI. This is an array of objects with role and content keys.
-    const [usePageText, setUsePageText] = useState("-"); // whether to use the page text as context. "-" means use current page as context, "+" means use multiple pages as context, "x" means don't use page text as context
-    const [animatingButton, setAnimatingButton] = useState(null); // the button that is currently animating
-    const [loading, setLoading] = useState(true); // whether the page is currently loading (initialising the GPT object)
+    const [model, setModel] = useState("");
+
+   
+    const [pageText, setPageText] = useState("");
+    const [chatHistory, setChatHistory] = useState([]);
+    const [isGenerating, setIsGenerating] = useState(true);
+    const [userMessage, setUserMessage] = useState("");
+    const [openaiChatHistory,setOpenaiChatHistory] = useState([]);
+    const [usePageText, setUsePageText] = useState("-");
+    const [animatingButton, setAnimatingButton] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [apiKeyNotion, setApiKeyNotion] = useState(Cookies.get('apiKeyNotion') || '');
+    const [isValidApiKeyNotion, setIsValidApiKeyNotion] = useState(false);
+	const [isInputValidNotion, setIsInputValidNotion] = useState(true);
+	const [notionPageId, setNotionPageId] = useState(Cookies.get('notionPageId') || '');
     
     const pageContextCycles = ["-", "+", "x"]; // the possible values for usePageText
 
@@ -25,6 +33,71 @@ export default function Chat(props){
     const gptUtils = useRef(null); // reference to the GPT object
     const supportedModels = useRef(null); // reference to the supported models for the GPT object
 
+    const handleApiKeyNotionChange = (event) => {
+		setApiKeyNotion(event.target.value);
+		setIsInputValidNotion(true);
+		console.log("Notion API Key changed:", event.target.value);
+	};
+
+	const handlePageIdChange = (event) => {
+		setNotionPageId(event.target.value);
+		console.log("Notion Page ID changed:", event.target.value);
+	};
+
+    const checkApiKeyNotion = async () => {
+        try {
+            const response = await fetch('http://localhost:3001/check-notion-key', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${apiKeyNotion}`,
+                },
+            });
+    
+            if (response.ok) {
+                setIsValidApiKeyNotion(true);
+                Cookies.set('apiKeyNotion', apiKeyNotion);
+                console.log('Notion API key is valid');
+            } else {
+                setIsValidApiKeyNotion(false);
+                setIsInputValidNotion(false);
+                console.error('Invalid Notion API key');
+            }
+        } catch (error) {
+            setIsValidApiKeyNotion(false);
+            setIsInputValidNotion(false);
+            console.error('Error checking Notion API key:', error);
+        }
+    };
+    
+    
+    const sendToNotion = async (messageContent) => {
+        try {
+            const response = await fetch(`http://localhost:3001/update-page-content`, { // This hits your backend server
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKeyNotion}`, // Include API key here
+                },
+                body: JSON.stringify({
+                    databaseId: 'defbd45c536b44508b16321564f91445', // Replace with your actual database ID
+                    searchString: 'CSCI', // The text to search for in the page title
+                    newText: messageContent // Content to be added to the Notion page
+                }),
+            });
+    
+            const data = await response.json();
+    
+            if (!response.ok) {
+                console.error('Failed to update content in Notion', data);
+            } else {
+                console.log('Content updated in Notion successfully:', data);
+            }
+        } catch (error) {
+            console.error('Error updating content in Notion:', error);
+        }
+    };
+    
+    
     useEffect(() => {
         // console.log("useEffect");
         // initialise the GPT object
@@ -66,8 +139,20 @@ export default function Chat(props){
             setIsGenerating={setIsGenerating}
             scrollToBottom={scrollToBottom}
             key={chatHistory.length}
+            uniqueKey={chatHistory.length}
         />));
+
+        console.log("message: ", message)
+        console.log("message: ", updatedChatHistory)
+        console.log("message: ", stream)
         
+        if (isValidApiKeyNotion && apiKeyNotion && notionPageId) {
+            await sendToNotion(message); // Call the function to send the content to Notion
+        } else {
+            console.warn('Notion API key or Page ID is not valid. Content will not be sent to Notion.');
+        }
+
+        setIsGenerating(false);
     };
 
     /**
@@ -80,6 +165,7 @@ export default function Chat(props){
                 text="Reading the PDF page"
                 scrollToBottom={scrollToBottom}
                 key={chatHistory.length}
+                uniqueKey={chatHistory.length}
                 thought = {true}
             />
         ));
@@ -150,6 +236,10 @@ export default function Chat(props){
                 key={chatHistory.length}
             />
         ]));
+
+        console.log("chathistory: ", updatedChatHistory);
+        console.log("openaichathistory: ", openaiChatHistory);
+
     };
 
     /**
@@ -170,6 +260,10 @@ export default function Chat(props){
             props.scrollRef.current.scrollIntoView({ behavior: "smooth" });
         }
         setPageText(props.text);
+
+        if (apiKeyNotion && !isValidApiKeyNotion) {
+			checkApiKeyNotion();
+		}
     }, [props.text, props.scrollRef]);
 
     /**
@@ -185,14 +279,58 @@ export default function Chat(props){
     return (
         <div className="chat">
             <div className="top-chat-elements">
-                
+            <div className='APIKey'>
+                <h3>Connect to Notion</h3>
+                <input
+                    type="text"
+                    placeholder="Enter your Notion API key"
+                    value={apiKeyNotion}
+                    onChange={handleApiKeyNotionChange}
+                    id="hoverable"
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                            checkApiKeyNotion();
+                        }
+                    }}
+                />
+                <input
+                    type="text"
+                    placeholder="Enter your Notion Page ID"
+                    value={notionPageId}
+                    onChange={handlePageIdChange}
+                    id="hoverable"
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                            checkApiKeyNotion();
+                        }
+                    }}
+                />
+                <button id="hoverable" onClick={() => {
+                    // console.log("Connect to Notion button clicked");
+                    // console.log("apiKeyNotion:", apiKeyNotion);
+                    // console.log("notionDatabaseId:", notionDatabaseId);
+                    if (apiKeyNotion && notionPageId) {
+                        Cookies.set('apiKeyNotion', apiKeyNotion);
+                        Cookies.set('notionPageId', notionPageId);
+                        console.log("apiKeyNotion:", apiKeyNotion);
+                        console.log("notionPageId:", notionPageId);
+                        setIsValidApiKeyNotion(true);
+                        console.log("Notion connected successfully");
+                    } else {
+                        console.log("Notion API key or Page ID missing");
+                    }
+                    // Cookies.set('apiKeyNotion', apiKeyNotion);
+                    // Cookies.set('notionPageId', notionPageId);
+                    setIsValidApiKeyNotion(true);
+                }}>Connect to Notion</button>
+            </div>
                 <button
                     className="generate"
                     id="hoverable"
                     disabled={!props.text || isGenerating}
                     onClick={handleGenerate}
                 >
-                    Summarise
+                    Summarize
                 </button>
             </div>
             <div className="messages" ref={messageRef}>
@@ -201,6 +339,7 @@ export default function Chat(props){
                         {message}
                     </div>
                 ))}
+
             </div>
             <div className="chat-elements">
                 <TextareaAutosize
