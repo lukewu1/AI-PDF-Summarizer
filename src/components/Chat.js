@@ -237,9 +237,6 @@ export default function Chat(props){
             />
         ]));
 
-        console.log("chathistory: ", updatedChatHistory);
-        console.log("openaichathistory: ", openaiChatHistory);
-
     };
 
     /**
