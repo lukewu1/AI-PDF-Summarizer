@@ -23,9 +23,10 @@ export default function Chat(props){
     const [animatingButton, setAnimatingButton] = useState(null);
     const [loading, setLoading] = useState(true);
     const [apiKeyNotion, setApiKeyNotion] = useState(Cookies.get('apiKeyNotion') || '');
-    const [isValidApiKeyNotion, setIsValidApiKeyNotion] = useState(false);
-	const [isInputValidNotion, setIsInputValidNotion] = useState(true);
-	const [notionPageId, setNotionPageId] = useState(Cookies.get('notionPageId') || '');
+    const [isValidApiKeyNotion, setIsValidApiKeyNotion] = useState(true);
+    const [isInputValidNotion, setIsInputValidNotion] = useState(true);
+	const [notionDatabaseId, setNotionDatabaseId] = useState(Cookies.get('notionDatabaseId') || '');
+    const [notionPageTitle, setNotionPageTitle] = useState(Cookies.get('notionPageTitle') || '');
     
     const pageContextCycles = ["-", "+", "x"]; // the possible values for usePageText
 
@@ -35,22 +36,29 @@ export default function Chat(props){
 
     const handleApiKeyNotionChange = (event) => {
 		setApiKeyNotion(event.target.value);
-		setIsInputValidNotion(true);
 		console.log("Notion API Key changed:", event.target.value);
 	};
 
-	const handlePageIdChange = (event) => {
-		setNotionPageId(event.target.value);
-		console.log("Notion Page ID changed:", event.target.value);
+	const handleDatabaseIdChange = (event) => {
+		setNotionDatabaseId(event.target.value);
+		console.log("Notion Database ID changed:", event.target.value);
+	};
+
+    const handlePageTitleChange = (event) => {
+		setNotionPageTitle(event.target.value);
+		console.log("Notion Page Title changed:", event.target.value);
 	};
 
     const checkApiKeyNotion = async () => {
         try {
             const response = await fetch('http://localhost:3001/check-notion-key', {
-                method: 'GET',
+                method: 'POST',  // Changed to POST for sending the API key
                 headers: {
-                    'Authorization': `Bearer ${apiKeyNotion}`,
+                    'Content-Type': 'application/json',
                 },
+                body: JSON.stringify({
+                    apiKeyNotion: apiKeyNotion,  // Sending the API key in the request body
+                }),
             });
     
             if (response.ok) {
@@ -59,16 +67,15 @@ export default function Chat(props){
                 console.log('Notion API key is valid');
             } else {
                 setIsValidApiKeyNotion(false);
-                setIsInputValidNotion(false);
                 console.error('Invalid Notion API key');
             }
         } catch (error) {
             setIsValidApiKeyNotion(false);
-            setIsInputValidNotion(false);
             console.error('Error checking Notion API key:', error);
         }
     };
     
+    const delay = ms => new Promise(res => setTimeout(res, ms));
     
     const sendToNotion = async (messageContent) => {
         try {
@@ -79,11 +86,14 @@ export default function Chat(props){
                     'Authorization': `Bearer ${apiKeyNotion}`, // Include API key here
                 },
                 body: JSON.stringify({
-                    databaseId: 'defbd45c536b44508b16321564f91445', // Replace with your actual database ID
-                    searchString: 'CSCI', // The text to search for in the page title
+                    // databaseId: 'defbd45c536b44508b16321564f91445', // Replace with your actual database ID
+                    databaseId: notionDatabaseId,
+                    searchString: notionPageTitle, // The text to search for in the page title
                     newText: messageContent // Content to be added to the Notion page
                 }),
             });
+
+            console.log("apikeynotion: ", apiKeyNotion);
     
             const data = await response.json();
     
@@ -97,6 +107,15 @@ export default function Chat(props){
         }
     };
     
+    // const sendToNotionWithDelay = async (messageContent) => {
+    //     try {
+    //         console.log("Sending message to Notion:", messageContent);
+    //         await sendToNotion(messageContent); // Send the message content to Notion
+    //         await delay(1000); // Wait for 1 second before sending the next request (adjust the delay as needed)
+    //     } catch (error) {
+    //         console.error('Error sending to Notion:', error);
+    //     }
+    // };
     
     useEffect(() => {
         // console.log("useEffect");
@@ -141,16 +160,6 @@ export default function Chat(props){
             key={chatHistory.length}
             uniqueKey={chatHistory.length}
         />));
-
-        console.log("message: ", message)
-        console.log("message: ", updatedChatHistory)
-        console.log("message: ", stream)
-        
-        if (isValidApiKeyNotion && apiKeyNotion && notionPageId) {
-            await sendToNotion(message); // Call the function to send the content to Notion
-        } else {
-            console.warn('Notion API key or Page ID is not valid. Content will not be sent to Notion.');
-        }
 
         setIsGenerating(false);
     };
@@ -246,7 +255,7 @@ export default function Chat(props){
      */
     const handleIconClick = (buttonId) => {
         setAnimatingButton(buttonId);
-        setTimeout(() => setAnimatingButton(null), 300); // Reset after animation duration
+        setTimeout(() => setAnimatingButton(null), 300);
     };
 
     /**
@@ -263,157 +272,234 @@ export default function Chat(props){
 		}
     }, [props.text, props.scrollRef]);
 
-    /**
-     * Shows a loading message while the page is loading
-     */
+    useEffect(() => {
+        console.log("openaiChatHistory: ", openaiChatHistory);
+    
+        if (openaiChatHistory && openaiChatHistory.length > 0) {
+            const lastMessage = openaiChatHistory[openaiChatHistory.length - 1];
+    
+            // Check if the last message is from the bot and contains content
+            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.content) {
+                console.log("Sending content to Notion: ", lastMessage.content);
+                sendToNotion(lastMessage.content);
+            } else {
+                console.log("The last message is not from the bot or it has no content.");
+            }
+        } else {
+            console.log("openaiChatHistory is either undefined or empty.");
+        }
+    }, [openaiChatHistory]);
+    
+    
+
     if (loading) {
         return (
             <div>Loading</div>
         );
     }
         
-
     return (
-        <div className="chat">
-            <div className="top-chat-elements">
-            <div className='APIKey'>
-                <h3>Connect to Notion</h3>
-                <input
-                    type="text"
-                    placeholder="Enter your Notion API key"
-                    value={apiKeyNotion}
-                    onChange={handleApiKeyNotionChange}
-                    id="hoverable"
-                    onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                            checkApiKeyNotion();
-                        }
-                    }}
-                />
-                <input
-                    type="text"
-                    placeholder="Enter your Notion Page ID"
-                    value={notionPageId}
-                    onChange={handlePageIdChange}
-                    id="hoverable"
-                    onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                            checkApiKeyNotion();
-                        }
-                    }}
-                />
-                <button id="hoverable" onClick={() => {
-                    // console.log("Connect to Notion button clicked");
-                    // console.log("apiKeyNotion:", apiKeyNotion);
-                    // console.log("notionDatabaseId:", notionDatabaseId);
-                    if (apiKeyNotion && notionPageId) {
-                        Cookies.set('apiKeyNotion', apiKeyNotion);
-                        Cookies.set('notionPageId', notionPageId);
-                        console.log("apiKeyNotion:", apiKeyNotion);
-                        console.log("notionPageId:", notionPageId);
-                        setIsValidApiKeyNotion(true);
-                        console.log("Notion connected successfully");
-                    } else {
-                        console.log("Notion API key or Page ID missing");
-                    }
-                    // Cookies.set('apiKeyNotion', apiKeyNotion);
-                    // Cookies.set('notionPageId', notionPageId);
-                    setIsValidApiKeyNotion(true);
-                }}>Connect to Notion</button>
-            </div>
-                <button
-                    className="generate"
-                    id="hoverable"
-                    disabled={!props.text || isGenerating}
-                    onClick={handleGenerate}
-                >
-                    Summarize
-                </button>
-            </div>
-            <div className="messages" ref={messageRef}>
-                {chatHistory.map((message, index) => (
-                    <div key={index}>
-                        {message}
-                    </div>
-                ))}
-
-            </div>
-            <div className="chat-elements">
-                <TextareaAutosize
-                    id="userMessageTextarea"
-                    placeholder="Ask about content"
-                    value={userMessage}
-                    onChange={(event) => setUserMessage(event.target.value)}
-                    onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.shiftKey && userMessage) {
-                            event.preventDefault(); // Prevents the default action of Enter key
-                            handleSendMessage();
-                        }
-                    }}
-                    disabled={!props.text || isGenerating}
-                    style={{ resize: 'none', overflow: 'hidden' }} // Inline CSS to prevent resizing and hide overflow
-                />
-
-                <button
-                    disabled={!props.text || isGenerating}
-                    onClick={() => {
-                        handleIconClick('context');
-                        setUsePageText(pageContextCycles[(pageContextCycles.indexOf(usePageText) + 1) % 3]);
-                    }}
-                    title={usePageText === "-" ? "Use page text as context" : usePageText === "+" ? "Use multiple pages as context" : "Do not use page text as context"}
-                >
-                    <FontAwesomeIcon 
-                        icon={usePageText === "-" ? faFileCircleMinus : usePageText === "+" ? faFileCirclePlus : faFileCircleXmark} 
-                        className={animatingButton === 'context' ? 'pulse-animation' : ''}
-                    />
-                </button>
-                <button
-                    disabled={!props.text || isGenerating || !userMessage}
-                    onClick={() => {
-                        handleIconClick('send');
-                        handleSendMessage();
-                    }}
-                    title="Send message"
-                >
-                    <FontAwesomeIcon icon={faPaperPlane} className={animatingButton === 'send' ? 'pulse-animation' : ''} />
-                </button>
-                <button
-                    disabled={chatHistory.length === 0}
-                    onClick={() => {
-                        handleIconClick('clear');
-                        setChatHistory([]);
-                        setOpenaiChatHistory([]);
-                        setIsGenerating(false);
-                    }}
-                    title = {isGenerating? "Stop generating" : "Clear chat"}
-                >
-                    <FontAwesomeIcon icon={isGenerating? faStop : faTrash} className={animatingButton === 'clear' ? 'pulse-animation' : ''} />
-                </button>
-            </div>
-            <div className="additional-chat-elements">
-                <select
-                    className="mode-selector"
-                    value={model}
-                    onChange={(event) => {
-                        setModel(event.target.value);
-                        gptUtils.current.setModel(event.target.value);
-                        console.log(event.target.value);
-                    }}
-                >
-                    {supportedModels.current.map((model) => (
-                        <option key={model} value={model}>
-                            {model}
-                        </option>
+        <>
+            {isValidApiKeyNotion ? (
+                <div className="chat">
+                <div className="top-chat-elements">
+                <div className='APIKey'>
+                        <button id="hoverable" onClick={() => {
+                            setIsValidApiKeyNotion(false);
+                            setApiKeyNotion('');
+                            Cookies.remove('apiKeyNotion');
+                        }}>Connect to Notion?</button>
+                </div>
+                    <button
+                        className="generate"
+                        id="hoverable"
+                        disabled={!props.text || isGenerating}
+                        onClick={handleGenerate}
+                    >
+                        Summarize
+                    </button>
+                </div>
+                <div className="messages" ref={messageRef}>
+                    {chatHistory.map((message, index) => (
+                        <div key={index}>
+                            {message}
+                        </div>
                     ))}
-                </select>
-                <div className="alert">
-                    {(model === "gpt-4-1106-preview" || model === "gpt-4") && (
-                        <FontAwesomeIcon icon={faExclamationCircle} className="alert-icon" />
-                    )}
-                    {model === "gpt-4-1106-preview" && " certain features may not work with the selected model"}
-                    {model === "gpt-4" && " while smarter, the usage cost for this model is expensive. use with caution"}
+    
+                </div>
+                <div className="chat-elements">
+                    <TextareaAutosize
+                        id="userMessageTextarea"
+                        placeholder="Ask about content"
+                        value={userMessage}
+                        onChange={(event) => setUserMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey && userMessage) {
+                                event.preventDefault(); // Prevents the default action of Enter key
+                                handleSendMessage(event);
+                            }
+                        }}
+                        disabled={!props.text || isGenerating}
+                        style={{ resize: 'none', overflow: 'hidden' }} // Inline CSS to prevent resizing and hide overflow
+                    />
+    
+                    <button
+                        disabled={!props.text || isGenerating}
+                        onClick={() => {
+                            handleIconClick('context');
+                            setUsePageText(pageContextCycles[(pageContextCycles.indexOf(usePageText) + 1) % 3]);
+                        }}
+                        title={usePageText === "-" ? "Use page text as context" : usePageText === "+" ? "Use multiple pages as context" : "Do not use page text as context"}
+                    >
+                        <FontAwesomeIcon 
+                            icon={usePageText === "-" ? faFileCircleMinus : usePageText === "+" ? faFileCirclePlus : faFileCircleXmark} 
+                            className={animatingButton === 'context' ? 'pulse-animation' : ''}
+                        />
+                    </button>
+                    <button
+                        disabled={!props.text || isGenerating || !userMessage}
+                        onClick={() => {
+                            handleIconClick('send');
+                            handleSendMessage();
+                        }}
+                        title="Send message"
+                    >
+                        <FontAwesomeIcon icon={faPaperPlane} className={animatingButton === 'send' ? 'pulse-animation' : ''} />
+                    </button>
+                    <button
+                        disabled={chatHistory.length === 0}
+                        onClick={() => {
+                            handleIconClick('clear');
+                            setChatHistory([]);
+                            setOpenaiChatHistory([]);
+                            setIsGenerating(false);
+                        }}
+                        title = {isGenerating? "Stop generating" : "Clear chat"}
+                    >
+                        <FontAwesomeIcon icon={isGenerating? faStop : faTrash} className={animatingButton === 'clear' ? 'pulse-animation' : ''} />
+                    </button>
+                </div>
+                <div className="additional-chat-elements">
+                    <select
+                        className="mode-selector"
+                        value={model}
+                        onChange={(event) => {
+                            setModel(event.target.value);
+                            gptUtils.current.setModel(event.target.value);
+                            console.log(event.target.value);
+                        }}
+                    >
+                        {supportedModels.current.map((model) => (
+                            <option key={model} value={model}>
+                                {model}
+                            </option>
+                        ))}
+                    </select>
+                    <div className="alert">
+                        {(model === "gpt-4-1106-preview" || model === "gpt-4") && (
+                            <FontAwesomeIcon icon={faExclamationCircle} className="alert-icon" />
+                        )}
+                        {model === "gpt-4-1106-preview" && " certain features may not work with the selected model"}
+                        {model === "gpt-4" && " while smarter, the usage cost for this model is expensive. use with caution"}
+                    </div>
                 </div>
             </div>
-        </div>
+            ) : (
+                <>
+					<div className="APIKey-form">
+                        <div className="NotionBox">
+                            <div className="inputs">
+                                <input
+                                    className={isInputValidNotion ? "" : "invalid"}
+                                    type="text"
+                                    value={apiKeyNotion}
+                                    onChange={handleApiKeyNotionChange}
+                                    placeholder="Enter your Notion API key"
+                                    id="hoverablenotion"
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                            checkApiKeyNotion();
+                                        }
+                                    }}
+                                />
+                                <input
+                                    type="text"
+                                    placeholder="Enter your Notion Database ID"
+                                    value={notionDatabaseId}
+                                    onChange={handleDatabaseIdChange}
+                                    id="hoverablenotion"
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                            checkApiKeyNotion();
+                                        }
+                                    }}
+                                /> 
+                                <input
+                                    type="text"
+                                    placeholder="Enter the title of your Page"
+                                    value={notionPageTitle}
+                                    onChange={handlePageTitleChange}
+                                    id="hoverablenotion"
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                            checkApiKeyNotion();
+                                        }
+                                    }}
+                                /> 
+                            </div>
+                            <div className="notionbutton">
+                                <button
+                                    id="hoverable"
+                                    onClick={() => {
+                                        checkApiKeyNotion();
+                                    }}
+                                >Enter</button>
+                                {!isInputValidNotion && <p className="error">Invalid Notion API key</p>}
+                            </div>
+                        </div>
+					</div>
+                    {/* <input
+                        type="text"
+                        placeholder="Enter your Notion API key"
+                        value={apiKeyNotion}
+                        onChange={handleApiKeyNotionChange}
+                        id="hoverable"
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                                checkApiKeyNotion();
+                            }
+                        }}
+                    /> 
+                    <input
+                        type="text"
+                        placeholder="Enter your Notion Database ID"
+                        value={notionDatabaseId}
+                        onChange={handleDatabaseIdChange}
+                        id="hoverable"
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                                checkApiKeyNotion();
+                            }
+                        }}
+                    /> 
+                    <button id="hoverable" onClick={() => {
+                        // if (apiKeyNotion && notionPageId) {
+                        if (apiKeyNotion) {
+                            Cookies.set('apiKeyNotion', apiKeyNotion);
+                            Cookies.set('notionDatabaseId', notionDatabaseId);
+                            console.log("apiKeyNotion:", apiKeyNotion);
+                            console.log("notionDatabaseId:", notionDatabaseId);
+                            setIsValidApiKeyNotion(true);
+                            console.log("Notion connected successfully");
+                        } else {
+                            console.log("Notion API key or Page ID missing");
+                        }
+                        // Cookies.set('apiKeyNotion', apiKeyNotion);
+                        // Cookies.set('notionPageId', notionPageId);
+                        setIsValidApiKeyNotion(true);
+                    }}>Connect</button> */}
+                </>
+            )}
+        </>
     );
 }

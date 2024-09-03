@@ -192,3 +192,23 @@ input:disabled {
     opacity: 0.8;
     font-size: 90%;
 }
+
+.NotionBox{
+    display: flex;
+    /* justify-content: space-between; */
+}
+
+.inputs{
+    width: auto;
+}
+
+#hoverablenotion:hover {
+    cursor: pointer;
+    background-color: var(--button-highlight-color);
+}
+
+#hoverablenotion {
+    user-select: none;
+    width: auto;
+    margin-right: 1%;
+}
